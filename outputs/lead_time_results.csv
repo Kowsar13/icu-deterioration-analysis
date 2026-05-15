@@ -1,0 +1,6 @@
+patient,instability_start,clinical_event_time,detected_time,lead_time
+0,44,56,50,6
+1,47,60,55,5
+2,45,60,50,10
+3,41,55,50,5
+4,46,64,55,9

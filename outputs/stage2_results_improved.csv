@@ -1,0 +1,6 @@
+patient,true_pattern,predicted_pattern
+0,respiratory,respiratory
+1,infection,infection
+2,infection,infection
+3,infection,infection
+4,circulatory,infection
