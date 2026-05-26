@@ -42,7 +42,7 @@ vitals = vitals[selected_columns]
 print("\nSelected columns loaded.")
 
 # =====================================================
-# REMOVE ROWS WITH TOO MANY MISSING VALUES
+# REMOVE ROWS WITH CRITICAL MISSING VALUES
 # =====================================================
 print("\nCleaning missing values...")
 
@@ -71,17 +71,38 @@ vitals = vitals.rename(columns={
 })
 
 # =====================================================
-# SELECT SMALL PATIENT SUBSET
+# SELECT LARGE COHORT
 # =====================================================
-print("\nSelecting patient subset...")
+print("\nSelecting larger ICU cohort...")
 
-patient_ids = vitals["patient_id"].unique()[:5]
+# count rows per patient
+patient_counts = (
+    vitals["patient_id"]
+    .value_counts()
+)
+
+# keep patients with enough observations
+eligible_patients = patient_counts[
+    patient_counts >= 50
+].index
+
+print(
+    "Eligible patients:",
+    len(eligible_patients)
+)
+
+# choose first 1000
+selected_patients = eligible_patients[:1000]
+
+print(
+    "Selected cohort size:",
+    len(selected_patients)
+)
 
 subset = vitals[
-    vitals["patient_id"].isin(patient_ids)
-]
-
-print("Selected patients:", patient_ids)
+    vitals["patient_id"]
+    .isin(selected_patients)
+].copy()
 
 # =====================================================
 # SORT TEMPORALLY
@@ -91,11 +112,14 @@ subset = subset.sort_values(
 )
 
 # =====================================================
-# SAVE CLEAN DATASET
+# SAVE
 # =====================================================
 output_path = "outputs/real_icu_signals.csv"
 
-subset.to_csv(output_path, index=False)
+subset.to_csv(
+    output_path,
+    index=False
+)
 
 print("\nSaved cleaned ICU signals:")
 print(output_path)

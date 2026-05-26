@@ -1,17 +1,15 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 
-print("\n=== REAL ICU PREPROCESSING ===\n")
+print("\n=== LARGE COHORT ICU PREPROCESSING ===\n")
 
 # =====================================================
-# CREATE OUTPUT DIRECTORY
+# CREATE OUTPUT
 # =====================================================
 os.makedirs("outputs", exist_ok=True)
 
 # =====================================================
-# LOAD REAL ICU SIGNALS
+# LOAD
 # =====================================================
 file_path = "outputs/real_icu_signals.csv"
 
@@ -19,12 +17,19 @@ print("Loading ICU signals...")
 
 df = pd.read_csv(file_path)
 
-print("Original shape:", df.shape)
+print("Loaded shape:", df.shape)
 
 # =====================================================
-# SIGNAL COLUMNS
+# SORT
 # =====================================================
-signal_columns = [
+df = df.sort_values(
+    by=["patient_id", "time"]
+)
+
+# =====================================================
+# SIGNALS
+# =====================================================
+signals = [
     "HR",
     "RR",
     "SpO2",
@@ -41,120 +46,108 @@ processed_patients = []
 
 patient_ids = df["patient_id"].unique()
 
-print("\nProcessing patients...\n")
+total_patients = len(patient_ids)
 
-for pid in patient_ids:
+print(
+    "Patients to preprocess:",
+    total_patients
+)
 
-    print(f"Processing patient {pid}...")
+for i, pid in enumerate(patient_ids, start=1):
 
-    patient_df = df[df["patient_id"] == pid].copy()
+    if i % 100 == 0:
+        print(
+            f"Processed {i}/{total_patients}"
+        )
 
-    # sort by time
-    patient_df = patient_df.sort_values("time")
+    patient_df = df[
+        df["patient_id"] == pid
+    ].copy()
 
-    # =================================================
+    patient_df = patient_df.sort_values(
+        "time"
+    )
+
+    # =============================================
     # INTERPOLATION
-    # =================================================
-    patient_df[signal_columns] = (
-        patient_df[signal_columns]
+    # =============================================
+    patient_df[signals] = (
+        patient_df[signals]
         .interpolate()
     )
 
-    # =================================================
-    # FILL REMAINING MISSING VALUES
-    # =================================================
-    patient_df[signal_columns] = (
-        patient_df[signal_columns]
+    # =============================================
+    # FORWARD FILL
+    # =============================================
+    patient_df[signals] = (
+        patient_df[signals]
         .ffill()
+    )
+
+    # =============================================
+    # BACKWARD FILL
+    # =============================================
+    patient_df[signals] = (
+        patient_df[signals]
         .bfill()
     )
 
-    # =================================================
-    # SMOOTHING
-    # =================================================
-    for col in signal_columns:
+    # =============================================
+    # NORMALIZATION
+    # =============================================
+    for col in signals:
 
-        patient_df[col] = (
-            patient_df[col]
-            .rolling(window=3, min_periods=1)
-            .mean()
+        mean_val = (
+            patient_df[col].mean()
         )
 
-    # =================================================
-    # NORMALIZATION
-    # =================================================
-    for col in signal_columns:
+        std_val = (
+            patient_df[col].std()
+        )
 
-        mean = patient_df[col].mean()
-        std = patient_df[col].std()
-
-        if std != 0:
-
+        if (
+            pd.notna(std_val)
+            and std_val != 0
+        ):
             patient_df[col] = (
-                patient_df[col] - mean
-            ) / std
+                (
+                    patient_df[col]
+                    - mean_val
+                ) / std_val
+            )
 
-    processed_patients.append(patient_df)
-
-# =====================================================
-# COMBINE ALL PATIENTS
-# =====================================================
-processed_df = pd.concat(processed_patients)
-
-print("\nProcessed shape:", processed_df.shape)
+    processed_patients.append(
+        patient_df
+    )
 
 # =====================================================
-# SAVE PREPROCESSED DATA
+# COMBINE
 # =====================================================
-output_csv = "outputs/eicu_preprocessed.csv"
-
-processed_df.to_csv(output_csv, index=False)
-
-print("\nSaved preprocessed dataset:")
-print(output_csv)
-
-# =====================================================
-# VISUALIZE ONE PATIENT
-# =====================================================
-sample_patient = patient_ids[0]
-
-plot_df = processed_df[
-    processed_df["patient_id"] == sample_patient
-]
-
-plt.figure(figsize=(12,6))
-
-plt.plot(
-    plot_df["time"],
-    plot_df["HR"],
-    label="HR"
+final_df = pd.concat(
+    processed_patients,
+    ignore_index=True
 )
 
-plt.plot(
-    plot_df["time"],
-    plot_df["RR"],
-    label="RR"
+# =====================================================
+# SAVE
+# =====================================================
+save_path = (
+    "outputs/eicu_preprocessed.csv"
 )
 
-plt.plot(
-    plot_df["time"],
-    plot_df["SpO2"],
-    label="SpO2"
+final_df.to_csv(
+    save_path,
+    index=False
 )
 
-plt.title(f"Preprocessed ICU Signals - Patient {sample_patient}")
+print("\nSaved:")
+print(save_path)
 
-plt.xlabel("Time Offset")
-plt.ylabel("Normalized Value")
+print(
+    "\nFinal shape:",
+    final_df.shape
+)
 
-plt.legend()
-plt.grid()
-
-plot_path = "outputs/eicu_preprocessing_plot.png"
-
-plt.savefig(plot_path)
-
-print("\nSaved visualization:")
-print(plot_path)
-
-print("\nREAL ICU PREPROCESSING COMPLETED.")
+print(
+    "\nPREPROCESSING COMPLETED."
+)

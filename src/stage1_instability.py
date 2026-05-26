@@ -1,102 +1,156 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import ruptures as rpt
 import os
 
-# Ensure outputs folder exists
+print("\n=== STAGE 1: INSTABILITY ANALYSIS ===\n")
+
 os.makedirs("outputs", exist_ok=True)
 
-# ==============================
-# Step 1: Load Data
-# ==============================
-data = pd.read_csv("data/patient_data.csv")
+# =====================================================
+# LOAD
+# =====================================================
+df = pd.read_csv(
+    "outputs/eicu_preprocessed.csv"
+)
 
-# ==============================
-# Step 2: Handle Missing Values
-# ==============================
-data = data.ffill()  # FIXED
+print("Loaded:", df.shape)
 
-# ==============================
-# Step 3: Extract Signals
-# ==============================
-time = data["time"].values
-hr = data["HR"].values
-bp = data["BP"].values
-rr = data["RR"].values
+signals = [
+    "HR",
+    "RR",
+    "SpO2",
+    "MAP"
+]
 
-# ==============================
-# Step 4: Smoothing (Moving Average)
-# ==============================
-def smooth(signal, window=3):
-    return pd.Series(signal).rolling(window=window, min_periods=1).mean().values
+results = []
 
-hr_s = smooth(hr)
-bp_s = smooth(bp)
-rr_s = smooth(rr)
+patient_ids = df["patient_id"].unique()
 
-# ==============================
-# Step 5: Combine Signals
-# ==============================
-signal = np.vstack([hr_s, bp_s, rr_s]).T
+print(
+    "Patients:",
+    len(patient_ids)
+)
 
-# ==============================
-# Step 6: Change Point Detection
-# ==============================
-model = rpt.Pelt(model="rbf").fit(signal)
-breakpoints = model.predict(pen=3)
+# =====================================================
+# PROCESS
+# =====================================================
+for i, pid in enumerate(
+    patient_ids,
+    start=1
+):
 
-change_point = breakpoints[0] if len(breakpoints) > 1 else None
+    if i % 100 == 0:
+        print(
+            f"Processed {i}/{len(patient_ids)}"
+        )
 
-# ==============================
-# Step 7: Instability Score
-# ==============================
-baseline = np.mean(signal[:5], axis=0)
-instability_score = np.linalg.norm(signal - baseline, axis=1)
+    patient_df = df[
+        df["patient_id"] == pid
+    ].copy()
 
-# Normalize
-instability_score = (instability_score - np.min(instability_score)) / (np.max(instability_score) - np.min(instability_score))
+    patient_df = patient_df.sort_values(
+        "time"
+    )
 
-# ==============================
-# Step 8: Plot Smoothed Signals
-# ==============================
-plt.figure(figsize=(10, 6))
-plt.plot(time, hr_s, label="HR (smoothed)")
-plt.plot(time, bp_s, label="BP (smoothed)")
-plt.plot(time, rr_s, label="RR (smoothed)")
+    instability_list = []
 
-if change_point is not None:
-    plt.axvline(x=change_point, linestyle="--", color="red", label="Detected Instability")
+    for sig in signals:
 
-plt.title("Smoothed Physiological Signals with Instability Detection")
-plt.xlabel("Time")
-plt.ylabel("Values")
-plt.legend()
-plt.grid()
+        # skip missing signal completely
+        if patient_df[sig].isna().all():
+            continue
 
-plt.savefig("outputs/smoothed_signals.png")
-plt.show()
+        signal = (
+            patient_df[sig]
+            .interpolate()
+            .ffill()
+            .bfill()
+        )
 
-# ==============================
-# Step 9: Plot Instability Score
-# ==============================
-plt.figure(figsize=(10, 4))
-plt.plot(time, instability_score, color="purple", label="Instability Score I(t)")
+        # if still invalid skip
+        if signal.isna().all():
+            continue
 
-if change_point is not None:
-    plt.axvline(x=change_point, linestyle="--", color="red", label="Detected Instability")
+        baseline = (
+            signal
+            .rolling(
+                window=12,
+                min_periods=1
+            )
+            .mean()
+        )
 
-plt.title("Normalized Instability Score Over Time")
-plt.xlabel("Time")
-plt.ylabel("Score")
-plt.legend()
-plt.grid()
+        deviation = (
+            signal - baseline
+        ).abs()
 
-plt.savefig("outputs/instability_score.png")
-plt.show()
+        deviation = deviation.fillna(0)
 
-# ==============================
-# Step 10: Print Results
-# ==============================
-print("Detected change points:", breakpoints)
-print("Estimated instability time:", change_point)
+        instability_list.append(
+            deviation.values
+        )
+
+    # if no usable signals
+    if len(instability_list) == 0:
+        continue
+
+    total_instability = np.sum(
+        instability_list,
+        axis=0
+    )
+
+    peak_idx = int(
+        np.argmax(
+            total_instability
+        )
+    )
+
+    peak_time = float(
+        patient_df.iloc[
+            peak_idx
+        ]["time"]
+    )
+
+    results.append({
+        "patient_id": pid,
+        "peak_instability":
+            float(
+                np.max(
+                    total_instability
+                )
+            ),
+        "peak_time":
+            peak_time,
+        "mean_instability":
+            float(
+                np.mean(
+                    total_instability
+                )
+            )
+    })
+
+# =====================================================
+# SAVE
+# =====================================================
+summary = pd.DataFrame(
+    results
+)
+
+save_path = (
+    "outputs/instability_summary.csv"
+)
+
+summary.to_csv(
+    save_path,
+    index=False
+)
+
+print("\nSaved:")
+print(save_path)
+
+print("\n=== SAMPLE ===")
+print(summary.head())
+
+print(
+    "\nINSTABILITY ANALYSIS COMPLETED."
+)
