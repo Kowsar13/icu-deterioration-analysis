@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
-print("STARTING PIPELINE")
+print("STARTING PIPELINE-----------")
 
 # ======================================
 # CREATE OUTPUT DIRECTORY
