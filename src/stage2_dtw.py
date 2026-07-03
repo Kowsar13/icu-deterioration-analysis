@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import ruptures as rpt
 import os
 
-print("Starting Stage 2 (Improved DTW)...")
+print("Starting Stage 2 (Improved DTW).....")
 
 os.makedirs("outputs", exist_ok=True)
 
